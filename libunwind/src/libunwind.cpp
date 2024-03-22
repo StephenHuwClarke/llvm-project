@@ -28,8 +28,8 @@
 
 #if !defined(__USING_SJLJ_EXCEPTIONS__)
 #include "AddressSpace.hpp"
+#include "CompartmentInfo.hpp"
 #include "UnwindCursor.hpp"
-
 
 template<size_t A, size_t B>
 constexpr bool check_less_eq_than() {
@@ -41,6 +41,9 @@ using namespace libunwind;
 
 /// internal object to represent this processes address space
 LocalAddressSpace LocalAddressSpace::sThisAddressSpace;
+
+/// internal object to represent this processes compartment information
+CompartmentInfo CompartmentInfo::sThisCompartmentInfo;
 
 _LIBUNWIND_EXPORT unw_addr_space_t unw_local_addr_space =
     (unw_addr_space_t)&LocalAddressSpace::sThisAddressSpace;
@@ -217,12 +220,19 @@ _LIBUNWIND_WEAK_ALIAS(__unw_get_proc_info, unw_get_proc_info)
 
 /// Resume execution at cursor position (aka longjump).
 _LIBUNWIND_HIDDEN int __unw_resume(unw_cursor_t *cursor) {
+  typedef LocalAddressSpace::pint_t pint_t;
   _LIBUNWIND_TRACE_API("__unw_resume(cursor=%p)", static_cast<void *>(cursor));
 #if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
   // Inform the ASan runtime that now might be a good time to clean stuff up.
   __asan_handle_no_return();
 #endif
   AbstractUnwindCursor *co = (AbstractUnwindCursor *)cursor;
+#if defined(__CHERI_PURE_CAPABILITY__) && defined(_LIBUNWIND_SANDBOX_OTYPES)
+  LocalAddressSpace &addressSpace = LocalAddressSpace::sThisAddressSpace;
+  pint_t sealer = addressSpace.getUnwindSealer();
+  if (addressSpace.isValidSealer(sealer)) {
+  }
+#endif // __CHERI_PURE_CAPABILITY__ && _LIBUNWIND_SANDBOX_OTYPES
   co->jumpto();
   return UNW_EUNSPEC;
 }
