@@ -87,6 +87,10 @@ private:
 #if defined(__CHERI_PURE_CAPABILITY__) && defined(_LIBUNWIND_SANDBOX_OTYPES)
       CHERI_DBG("getRegister(%d) = %#p\n", (int)prolog.cfaRegister,
                 (void *)result);
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+      if (__builtin_cheri_sealed_get(result))
+        result = __builtin_cheri_unseal(result, addressSpace.getUnwindSealer());
+#endif // _LIBUNWIND_SANDBOX_HARDENED
 #endif // __CHERI_PURE_CAPABILITY__ && _LIBUNWIND_SANDBOX_OTYPES
       result = (pint_t)((sint_t)result + prolog.cfaRegisterOffset);
     } else  if (prolog.cfaExpression != 0) {
@@ -270,12 +274,21 @@ size_t DwarfInstructions<A, R>::restoreCalleeSavedRegisters(pint_t csp,
                                                             pint_t sealer) {
   // Restore callee-saved registers. We seal these if they aren't sealed
   // already.
+  //
+  // XXX: When _LIBUNWIND_SANDBOX_HARDENED is specified, sentries get handed out
+  // and we can't really prevent the untrusted context from using those right
+  // now.
   size_t i;
   size_t offset;
   // Restore: c19-c28
   for (i = 0, offset = CI.kCalleeSavedOffset; i < CI.kCalleeSavedCount;
        ++i, offset += CI.kCalleeSavedSize) {
     pint_t regValue = addressSpace.getCapability(csp + offset);
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+    if (addressSpace.isValidSealer(sealer) &&
+        !__builtin_cheri_sealed_get(regValue))
+      regValue = __builtin_cheri_seal(regValue, sealer);
+#endif
     newRegisters.setCapabilityRegister(UNW_ARM64_C19 + i, regValue);
     CHERI_DBG("SETTING CALLEE SAVED CAPABILITY REGISTER: %lu (%s): %#p "
               "(offset=%zu)\n",
@@ -296,12 +309,20 @@ typename A::pint_t DwarfInstructions<A, R>::restoreRegistersFromSandbox(
          "Executive stack should be tagged!");
   // Derive the new executive CSP
   pint_t nextCSP = addressSpace.getCapability(csp + CI.kNextOffset);
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+  // Seal ECSP
+  nextCSP = __builtin_cheri_seal(nextCSP, sealer);
+#endif
   assert(__builtin_cheri_tag_get((void *)nextCSP) &&
          "Next executive stack should be tagged!");
   CHERI_DBG("SANDBOX: SETTING EXECUTIVE CSP %#p\n", (void *)nextCSP);
   newRegisters.setECSP(nextCSP);
   // Restore the next RCSP
   pint_t nextRCSP = addressSpace.getCapability(csp + CI.kNewSPOffset);
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+  // Seal RCSP
+  nextRCSP = __builtin_cheri_seal(nextRCSP, sealer);
+#endif
   newRegisters.setSP(nextRCSP);
   CHERI_DBG("SANDBOX: SETTING RESTRICTED CSP: %#p\n",
             (void *)newRegisters.getSP());
@@ -309,6 +330,9 @@ typename A::pint_t DwarfInstructions<A, R>::restoreRegistersFromSandbox(
       restoreCalleeSavedRegisters(csp, addressSpace, newRegisters, CI, sealer);
   // Restore the frame pointer
   pint_t newFP = addressSpace.getCapability(csp);
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+  newFP = __builtin_cheri_seal(newFP, sealer);
+#endif
   CHERI_DBG("SANDBOX: SETTING CFP %#p (offset=%zu)\n", (void *)newFP, offset);
   newRegisters.setFP(newFP);
   // Get the new return address. We can't seal this because a return address
@@ -385,6 +409,10 @@ int DwarfInstructions<A, R>::stepWithDwarf(A &addressSpace, pc_t pc,
       pint_t newSP = cfa;
 #if defined(__CHERI_PURE_CAPABILITY__) && defined(_LIBUNWIND_SANDBOX_OTYPES)
       pint_t sealer = addressSpace.getUnwindSealer();
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+      if (addressSpace.isValidSealer(sealer))
+        newSP = __builtin_cheri_seal(newSP, sealer);
+#endif // _LIBUNWIND_SANDBOX_HARDENED
 #endif // __CHERI_PURE_CAPABILITY__ && _LIBUNWIND_SANDBOX_OTYPES
       CHERI_DBG("SETTING SP: %#p\n", (void *)newSP);
       newRegisters.setSP(newSP);
@@ -415,6 +443,16 @@ int DwarfInstructions<A, R>::stepWithDwarf(A &addressSpace, pc_t pc,
           } else if (registers.validCapabilityRegister(i)) {
             capability_t savedReg = getSavedCapabilityRegister(
                 addressSpace, registers, cfa, prolog.savedRegisters[i]);
+#if defined(__CHERI_PURE_CAPABILITY__) &&                                      \
+    defined(_LIBUNWIND_SANDBOX_OTYPES) && defined(_LIBUNWIND_SANDBOX_HARDENED)
+            // Seal all the capability registers. This enforces the invariant
+            // that unsealed capabilities are never stored in the context that
+            // aren't explicitly set through unw_set_reg() by a consumer.
+            if (addressSpace.isValidSealer(sealer) &&
+                !__builtin_cheri_sealed_get(savedReg))
+              savedReg = __builtin_cheri_seal(savedReg, sealer);
+#endif // __CHERI_PURE_CAPABILITY__ && _LIBUNWIND_SANDBOX_OTYPES &&
+       // _LIBUNWIND_SANDBOX_HARDENED
             newRegisters.setCapabilityRegister(i, savedReg);
             CHERI_DBG("SETTING CAPABILITY REGISTER %d (%s): %#p \n", i,
                       newRegisters.getRegisterName(i), (void *)savedReg);

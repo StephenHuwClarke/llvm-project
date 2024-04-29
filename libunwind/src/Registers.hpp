@@ -1852,6 +1852,45 @@ public:
   void        setVectorRegister(int num, v128 value);
   static const char *getRegisterName(int num);
   void        jumpto() { __libunwind_Registers_arm64_jumpto(this); }
+#if defined(__CHERI_PURE_CAPABILITY__) &&                                      \
+    defined(_LIBUNWIND_SANDBOX_OTYPES) && defined(_LIBUNWIND_SANDBOX_HARDENED)
+  void        unsealSP(uintptr_t sealer) {
+    assert(__builtin_cheri_sealed_get(_registers.__sp) && "Value must be sealed");
+    _registers.__sp = __builtin_cheri_unseal(_registers.__sp, sealer);
+  }
+  void        unsealFP(uintptr_t sealer) {
+    assert(__builtin_cheri_sealed_get(_registers.__fp) && "Value must be sealed");
+    _registers.__fp = __builtin_cheri_unseal(_registers.__fp, sealer);
+  }
+  void        unsealCalleeSavedRegisters(uintptr_t sealer) {
+    for (auto i = 0; i < 10; ++i) {
+      uintptr_t sealedValue = getRegister(UNW_ARM64_C19 + i);
+      // FIXME: Would be nice to enforce this invariant, but right now
+      // unw_set_reg() gets called to set what ends up in private_1, and it
+      // would require breaking libunwind's public API to seal registers through
+      // that particular path, and therefore we can't assert this.
+#if 0
+      assert((!__builtin_cheri_tag_get(sealedValue) ||
+              __builtin_cheri_sealed_get(sealedValue)) &&
+             "Value must be sealed");
+#endif
+      uintptr_t unsealedValue = sealedValue;
+      // If the tag gets cleared when we attempt to unseal our value, that means
+      // that we either have a capability that was sealed to begin with, and
+      // therefore we should just return it that way, or we have a sentry which
+      // we cannot unseal.
+      if (__builtin_cheri_tag_get(sealedValue) &&
+          __builtin_cheri_sealed_get(sealedValue)) {
+        unsealedValue = __builtin_cheri_unseal(sealedValue, sealer);
+        if (!__builtin_cheri_tag_get(unsealedValue)) {
+          unsealedValue = sealedValue;
+        }
+      }
+      setCapabilityRegister(UNW_ARM64_C19 + i, unsealedValue);
+    }
+  }
+#endif // __CHERI_PURE_CAPABILITY__ && _LIBUNWIND_SANDBOX_OTYPES &&
+       // _LIBUNWIND_SANDBOX_HARDENED
   static constexpr int lastDwarfRegNum() {
 #ifdef __CHERI_PURE_CAPABILITY__
     return _LIBUNWIND_HIGHEST_DWARF_REGISTER_MORELLO;
@@ -2000,6 +2039,10 @@ inline bool Registers_arm64::validCapabilityRegister(int regNum) const {
 inline uintptr_t
 Registers_arm64::getUnsealedECSP(uintptr_t sealer) const {
   uintptr_t csp = _registers.__ecsp;
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+  if (__builtin_cheri_sealed_get(csp))
+    csp = __builtin_cheri_unseal(csp, sealer);
+#endif // _LIBUNWIND_SANDBOX_HARDENED
   return csp;
 }
 #endif // _LIBUNWIND_SANDBOX_OTYPES
@@ -4566,6 +4609,11 @@ public:
   void        setIP(reg_t value) { _registers[0] = value; }
 #if defined(__CHERI_PURE_CAPABILITY__) && defined(_LIBUNWIND_SANDBOX_OTYPES)
   reg_t       getUnsealedECSP(uintptr_t sealer) { return getSP(); }
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+  void        unsealSP(uintptr_t sealer) {}
+  void        unsealFP(uintptr_t sealer) {}
+  void        unsealCalleeSavedRegisters(uintptr_t sealer) {}
+#endif // _LIBUNWIND_SANDBOX_HARDENED
 #endif // __CHERI_PURE_CAPABILITY__ && _LIBUNWIND_SANDBOX_OTYPES &&
 
 private:

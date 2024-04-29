@@ -715,7 +715,11 @@ DEFINE_LIBUNWIND_FUNCTION(__rtld_unw_setcontext)
   ret
 #endif
 END_LIBUNWIND_FUNCTION(__rtld_unw_setcontext)
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+WEAK_ALIAS(__rtld_unw_setcontext, _rtld_unw_setcontext)
+#else
 WEAK_ALIAS(__rtld_unw_setcontext, _rtld_unw_setcontext_unsealed)
+#endif
 #endif
 
 //
@@ -771,7 +775,11 @@ DEFINE_LIBUNWIND_FUNCTION(__libunwind_Registers_arm64_jumpto)
   ldr    c2,      [c0, #0x1f0]
   add    c3, c0,  #0x210
   ldp    c0, c1,  [c0, #0x000]
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+  b      _rtld_unw_setcontext
+#else
   b      _rtld_unw_setcontext_unsealed
+#endif
 #else
   // skip restore of x0,x1 for now
   ldp    x2, x3,  [x0, #0x010]

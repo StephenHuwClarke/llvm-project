@@ -417,7 +417,9 @@ inline uint64_t LocalAddressSpace::getRegister(pint_t addr) {
 
 #if defined(__CHERI_PURE_CAPABILITY__) && defined(_LIBUNWIND_SANDBOX_OTYPES)
 extern "C" {
-/// Call into the RTLD to get a sealer capability.
+/// Call into the RTLD to get a sealer capability. This sealer will be used to
+/// seal information in the unwinding context if _LIBUNWIND_SANDBOX_HARDENED is
+/// specified.
 LocalAddressSpace::pint_t _rtld_unw_getsealer(void);
 LocalAddressSpace::pint_t __rtld_unw_getsealer();
 _LIBUNWIND_HIDDEN LocalAddressSpace::pint_t __rtld_unw_getsealer() {

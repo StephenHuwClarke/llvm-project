@@ -11,6 +11,14 @@
 
 #define _LIBUNWIND_VERSION 15000
 
+#if defined(_LIBUNWIND_SANDBOX_HARDENED) && !defined(_LIBUNWIND_SANDBOX_OTYPES)
+#error "_LIBUNWIND_SANDBOX_HARDENED is invalid without a sandboxing mechanism"
+#endif
+
+#if defined(_LIBUNWIND_SANDBOX_OTYPES) && defined(_LIBUNWIND_NO_HEAP)
+#error "_LIBUNWIND_NO_HEAP cannot be used with _LIBUNWIND_SANDBOX_OTYPES"
+#endif
+
 #if defined(__arm__) && !defined(__USING_SJLJ_EXCEPTIONS__) && \
     !defined(__ARM_DWARF_EH__) && !defined(__SEH__)
 #define _LIBUNWIND_ARM_EHABI

@@ -231,6 +231,11 @@ _LIBUNWIND_HIDDEN int __unw_resume(unw_cursor_t *cursor) {
   LocalAddressSpace &addressSpace = LocalAddressSpace::sThisAddressSpace;
   pint_t sealer = addressSpace.getUnwindSealer();
   if (addressSpace.isValidSealer(sealer)) {
+#ifdef _LIBUNWIND_SANDBOX_HARDENED
+    co->unsealSP(sealer);
+    co->unsealFP(sealer);
+    co->unsealCalleeSavedRegisters(sealer);
+#endif // _LIBUNWIND_SANDBOX_HARDENED
   }
 #endif // __CHERI_PURE_CAPABILITY__ && _LIBUNWIND_SANDBOX_OTYPES
   co->jumpto();

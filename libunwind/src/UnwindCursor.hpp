@@ -474,6 +474,19 @@ public:
   }
 #endif
 
+#if defined(__CHERI_PURE_CAPABILITY__) &&                                      \
+    defined(_LIBUNWIND_SANDBOX_OTYPES) && defined(_LIBUNWIND_SANDBOX_HARDENED)
+  virtual void unsealSP(uintptr_t) {
+    _LIBUNWIND_ABORT("unsealSP not implemented");
+  }
+  virtual void unsealFP(uintptr_t) {
+    _LIBUNWIND_ABORT("unsealFP not implemented");
+  }
+  virtual void unsealCalleeSavedRegisters(uintptr_t) {
+    _LIBUNWIND_ABORT("unsealCalleeSavedRegisters not implemented");
+  }
+#endif
+
 #if defined(_LIBUNWIND_USE_CET)
   virtual void *get_registers() {
     _LIBUNWIND_ABORT("get_registers not implemented");
@@ -941,6 +954,12 @@ public:
   virtual bool        getFunctionName(char *buf, size_t len, unw_word_t *off);
   virtual void        setInfoBasedOnIPRegister(bool isReturnAddress = false);
   virtual const char *getRegisterName(int num);
+#if defined(__CHERI_PURE_CAPABILITY__) &&                                      \
+    defined(_LIBUNWIND_SANDBOX_OTYPES) && defined(_LIBUNWIND_SANDBOX_HARDENED)
+  virtual void       unsealSP(pint_t sealer);
+  virtual void       unsealFP(pint_t sealer);
+  virtual void       unsealCalleeSavedRegisters(pint_t sealer);
+#endif
 #ifdef __arm__
   virtual void        saveVFPAsX();
 #endif
@@ -1383,6 +1402,23 @@ template <typename A, typename R>
 const char *UnwindCursor<A, R>::getRegisterName(int regNum) {
   return _registers.getRegisterName(regNum);
 }
+
+#if defined(__CHERI_PURE_CAPABILITY__) &&                                      \
+    defined(_LIBUNWIND_SANDBOX_OTYPES) && defined(_LIBUNWIND_SANDBOX_HARDENED)
+template <typename A, typename R>
+void UnwindCursor<A, R>::unsealSP(pint_t sealer) {
+  return _registers.unsealSP(sealer);
+}
+template <typename A, typename R>
+void UnwindCursor<A, R>::unsealFP(pint_t sealer) {
+  return _registers.unsealFP(sealer);
+}
+template <typename A, typename R>
+void UnwindCursor<A, R>::unsealCalleeSavedRegisters(pint_t sealer) {
+  return _registers.unsealCalleeSavedRegisters(sealer);
+}
+#endif // __CHERI_PURE_CAPABILITY__ && _LIBUNWIND_SANDBOX_OTYPES &&
+       // _LIBUNWIND_SANDBOX_HARDENED
 
 template <typename A, typename R> bool UnwindCursor<A, R>::isSignalFrame() {
   return _isSignalFrame;
